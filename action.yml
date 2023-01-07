@@ -1,0 +1,5 @@
+name: 'Argonaut'
+description: 'GitHub Action saving result of GatorGrader as archival object.'
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
