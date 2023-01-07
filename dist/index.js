@@ -13631,6 +13631,14 @@ module.exports = require("assert");
 
 /***/ }),
 
+/***/ 2081:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("child_process");
+
+/***/ }),
+
 /***/ 6113:
 /***/ ((module) => {
 
@@ -13804,6 +13812,8 @@ const yaml = __nccwpck_require__(9613);
 //    process.env.GITHUB_TOKEN
 //);
 
+const exec = util.promisify((__nccwpck_require__(2081).exec));
+
 const loadFile = (filename) => util.promisify(fs.readFile)(filename, 'utf8');
 const writeFile = (filename) => util.promisify(fs.writeFile)(filepath, data);
 
@@ -13824,19 +13834,18 @@ const cleanLines = (lines) => {
     return [...new Set(lines)];
 }
 
-const assignCategory = (obj) => {
-    let check;
+const assignStatus = (obj) => {
+    let check = {};
     Object.keys(obj).some((key) => {
-      if(key == "category") {
-        check = {
-          "category": obj.category,
-          "description": obj.description,
-          "status": false
-        }
+      if(key == "description") {
+        Object.keys(obj).some((value) => {
+            check[value] = obj[value]
+        })
+        check.status = "✘"
         return true;
       }
       if(typeof obj[key] === "object"){
-        check = assignCategory(obj[key]);
+        check = assignStatus(obj[key]);
         return check !== undefined;
       }
     });
@@ -13846,12 +13855,12 @@ const assignCategory = (obj) => {
 const getChecks = (result, grader) => {
     let checks = [];
     for(let spec of grader) {
-      let check = assignCategory(spec);
+      let check = assignStatus(spec);
       checks.push(check);
     }
     Object.values(checks).some((check) => {
       if(result.passed.includes(check.description))
-        check.status = true;
+        check.status = "✔";
     });
     return checks;
 }
@@ -13860,12 +13869,13 @@ const groupChecks = (checks) => {
     return Array.from(
       checks.reduce((prev, next) => {
         prev.set(
-          next.category,
-          (prev.get(next.category) || []).concat(next)
+          next.status,
+          (prev.get(next.status) || []).concat(next)
         )
+        delete next.status;
         return prev
       }, new Map).entries(),
-      ([category, specifications]) => ({category, specifications})
+      ([status, specifications]) => ({status, specifications})
     )
 }
   
@@ -13888,21 +13898,19 @@ const getResult = (lines) => {
       // Retrieve the body of the check
       let body = check.substring(1).trim();
       if(status == "✔" || status == "✓") 
-        checks.passed.push(
-            {"description": body}
-        );
-      else checks.failed.push(
-        {"description": body}
-    );
+        checks.passed.push(body)
+      else checks.failed.push(body);
     }
     return checks;
 }
 
 const run = async () => {
   // Acquire checks from cached file
-  let report = await loadFile(
-    `${process.cwd()}/report`
-  );
+  //let report = await loadFile(
+  //  `${process.cwd()}/report`
+  //);
+  const {stdout, stderr} = await exec("gatorgrade");
+  let report = stderr;
   let lines = cleanLines(
       report.split("\n")
   );
@@ -13911,8 +13919,9 @@ const run = async () => {
   let grader = await loadGrader(result);
   // Turn results into checks
   let checks = getChecks(result, grader);
+  let grouped = groupChecks(checks);
   //let grouped = groupChecks(checks);
-  let json = JSON.stringify(checks);
+  let json = JSON.stringify(grouped);
   console.log(json);
   // FINISH HIM
   //writeFile(json);
